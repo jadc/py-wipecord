@@ -20,7 +20,6 @@ async def open_session(token, guild_id, author_id):
 
             msgs = [x[0] for x in bundle['messages']]
             for msg in msgs:
-
                 while True:
                     if await delete_message(session, msg):
                         deleted += 1
@@ -56,7 +55,10 @@ async def get_bundle(session, guild_id, user_id):
 async def delete_message(session, msg):
     async with session.delete(f"{api}/channels/{msg['channel_id']}/messages/{msg['id']}") as resp:
         await asyncio.sleep( int(resp.headers.get('Retry-After', 0)) )
-        return resp.status == 204
+
+        # Move onto deleting the next message iff
+        # current one is deleted or no permission
+        return resp.status == 204 or resp.status == 403
 
 def parse_args(args):
     if(len(args) < 3): return False
