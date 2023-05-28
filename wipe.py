@@ -1,38 +1,45 @@
-import argparse, logging
+import os, sys
 import aiohttp, asyncio
 
 api = '/api/v9'
-async def open_session(args):
-    req_headers = { 'Content-Type': 'application/json', 'Authorization': args.token }
+
+async def open_session(token, guild_id, author_id):
+    req_headers = { 'Content-Type': 'application/json', 'Authorization': token }
     async with aiohttp.ClientSession('https://discord.com/', headers=req_headers) as session:
-        # Get user information
-        if not args.user: args.user = '@me'
-        async with session.get(f'{api}/users/{args.user}') as resp:
-            res = await resp.json()
-            if(args.verbose): print(res)
-            logging.info(f"Wiping messages from @{res['username']} in guild {args.guild}")
-            args.user = res['id']
+        deleted = 0
+        user_id = await get_self(session, guild_id, author_id)
+        total_results = await get_total_messages(session, guild_id, user_id)
 
         while True:
-            bundle = await get_bundle(session, args.guild, args.user)
-            if(args.verbose): print(bundle)
+            bundle = await get_bundle(session, guild_id, user_id)
 
             # try again if rate limited
             if not bundle: continue
             # no more msgs to delete, exit loop
-            if len(bundle['total_results']) <= 0: break
+            if bundle['total_results'] <= 0: break
 
             # only delete messages sent by user
-            msgs = [x[0] for x in bundle['messages'] if x[0]['author']['id'] == args.user]
+            msgs = [x[0] for x in bundle['messages'] if x[0]['author']['id'] == user_id]
             for msg in msgs:
                 while True:
                     if await delete_message(session, msg):
+                        deleted += 1
+                        print(f'{100*(deleted/total_results):.2f}% ({deleted}/{total_results})', end='\r')
                         break
-                    else: 
-                        logging.error('Failed to delete a message, retrying...')
-                        continue # retry message delete
-            logging.info(f"{bundle['total_results']} messages remaining")
-        logging.info('No messages found!')
+                    else: continue # retry message delete
+        print(f'Deleted {deleted} messages')
+
+async def get_self(session, guild_id, author_id):
+    async with session.get(f'{api}/users/{author_id}') as resp:
+        res = await resp.json()
+        print(f"Wiping messages from {res['username']}#{res['discriminator']} in guild {guild_id}")
+        return res['id']
+
+async def get_total_messages(session, guild_id, user_id):
+    params = {'author_id': user_id, 'include_nsfw': 'true'}
+    async with session.get(f"{api}/guilds/{guild_id}/messages/search", params=params) as resp:
+        res = await resp.json()
+        return int( res['total_results'] )
 
 async def get_bundle(session, guild_id, user_id):
     params = {'author_id': user_id, 'sort_order': 'asc', 'include_nsfw': 'true'}
@@ -51,13 +58,14 @@ async def delete_message(session, msg):
         await asyncio.sleep( int(resp.headers.get('Retry-After', 0)) )
         return resp.status == 204
 
+def parse_args(args):
+    if(len(args) < 3): return False
+    if(len(args) > 4): return False
+    if( not args[2].isdigit() ): return False
+    if( len(args) == 4 and args[3].isdigit() ): return args[1], args[2], args[3]
+    return args[1], args[2], "@me"
+
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)s | %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')    
-
-    p = argparse.ArgumentParser()
-    p.add_argument('token', type=str, help='discord token')
-    p.add_argument('guild', type=int, help='guild id')
-    p.add_argument('-u', '--user', type=int, help='user id (default is self)')
-    p.add_argument('-v', '--verbose', action='store_true', help='verbose output')
-
-    asyncio.run( open_session(p.parse_args()) )
+    args = parse_args(sys.argv)
+    if( args ): asyncio.run( open_session(args[0], args[1], args[2]) )
+    else: print(f"Usage: python wipecord.py <token> <guild_id> [author_id]", file=sys.stderr); exit(1)
