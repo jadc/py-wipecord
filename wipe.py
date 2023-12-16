@@ -8,7 +8,10 @@ async def open_session(token, guild_id, author_id):
     async with aiohttp.ClientSession('https://discord.com/', headers=req_headers) as session:
         deleted = 0
         user_id = await get_self(session, guild_id, author_id)
-        total_results = await get_total_messages(session, guild_id, user_id)
+
+        total_results = False
+        while not total_results:
+            total_results = await get_total_messages(session, guild_id, user_id)
 
         while True:
             bundle = await get_bundle(session, guild_id, user_id)
@@ -32,13 +35,19 @@ async def open_session(token, guild_id, author_id):
 async def get_self(session, guild_id, author_id):
     async with session.get(f'{api}/users/{author_id}') as resp:
         res = await resp.json()
-        print(f"Wiping messages from {res['username']}#{res['discriminator']} in guild {guild_id}")
+        print(f"Wiping messages from @{res['username']} in guild {guild_id}")
         return res['id']
 
 async def get_total_messages(session, guild_id, user_id):
     params = {'author_id': user_id, 'include_nsfw': 'true'}
     async with session.get(f"{api}/guilds/{guild_id}/messages/search", params=params) as resp:
         res = await resp.json()
+
+        sleep_for = res.get('retry_after', 0)
+        if sleep_for > 0:
+            await asyncio.sleep( sleep_for )
+            return False
+
         return int( res['total_results'] )
 
 async def get_bundle(session, guild_id, user_id):
