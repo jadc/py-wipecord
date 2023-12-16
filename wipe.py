@@ -1,7 +1,7 @@
 import sys, aiohttp, asyncio
 
 api = '/api/v9'
-RATE_LIMIT_MULTIPLER = 5
+RATE_LIMIT_MULTIPLER = 6
 
 async def open_session(token, guild_id, author_id):
     req_headers = { 'Content-Type': 'application/json', 'Authorization': token }
@@ -64,7 +64,7 @@ async def delete_message(session, msg):
         return resp.status == 204
     
 async def wait(seconds):
-    print(f"Rate limited for {seconds}*{RATE_LIMIT_MULTIPLER} sec...", end='\r')
+    print(f"Rate limited for {seconds:.2f}*{RATE_LIMIT_MULTIPLER} sec...", end='\r')
     await asyncio.sleep( seconds * RATE_LIMIT_MULTIPLER )
     return False
 
