@@ -1,7 +1,7 @@
-import os, sys
-import aiohttp, asyncio
+import sys, aiohttp, asyncio
 
 api = '/api/v9'
+RATE_LIMIT_MULTIPLER = 5
 
 async def open_session(token, guild_id, author_id):
     req_headers = { 'Content-Type': 'application/json', 'Authorization': token }
@@ -27,7 +27,7 @@ async def open_session(token, guild_id, author_id):
                 while True:
                     if await delete_message(session, msg):
                         deleted += 1
-                        print(f'{100*(deleted/total_results):.2f}% ({deleted}/{total_results})', end='\r')
+                        print(f'{100*(deleted/total_results):.2f}% ({deleted}/{total_results})                             ', end='\r')
                         break
                     else: continue # retry message delete
         print(f'Deleted {deleted} messages')
@@ -44,9 +44,7 @@ async def get_total_messages(session, guild_id, user_id):
         res = await resp.json()
 
         sleep_for = res.get('retry_after', 0)
-        if sleep_for > 0:
-            await asyncio.sleep( sleep_for )
-            return False
+        if sleep_for > 0: return await wait(sleep_for)
 
         return int( res['total_results'] )
 
@@ -55,10 +53,8 @@ async def get_bundle(session, guild_id, user_id):
     async with session.get(f"{api}/guilds/{guild_id}/messages/search", params=params) as resp:
         res = await resp.json()
 
-        sleep_for = res.get('retry_after', 0)
-        if sleep_for > 0:
-            await asyncio.sleep( sleep_for )
-            return False
+        sleep_for = res.get('retry_after', 0) 
+        if sleep_for > 0: return await wait(sleep_for)
 
         return res
 
@@ -66,6 +62,11 @@ async def delete_message(session, msg):
     async with session.delete(f"{api}/channels/{msg['channel_id']}/messages/{msg['id']}") as resp:
         await asyncio.sleep( int(resp.headers.get('Retry-After', 0)) )
         return resp.status == 204
+    
+async def wait(seconds):
+    print(f"Rate limited for {seconds}*{RATE_LIMIT_MULTIPLER} sec...", end='\r')
+    await asyncio.sleep( seconds * RATE_LIMIT_MULTIPLER )
+    return False
 
 def parse_args(args):
     if(len(args) < 3): return False
