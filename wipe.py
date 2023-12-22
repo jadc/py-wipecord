@@ -23,7 +23,7 @@ async def open_session(token, guild_id, author_id):
 
             # only delete messages sent by user
             msgs = [x[0] for x in bundle['messages'] if x[0]['author']['id'] == user_id]
-            if len(msgs) <= 0: break
+            if len(msgs) <= 0: continue
             for msg in msgs:
                 while True:
                     if await delete_message(session, msg):
